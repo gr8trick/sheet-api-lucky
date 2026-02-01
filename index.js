@@ -1,96 +1,45 @@
-const API_KEY = "Rajbgs851211";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNyWPImIZ3V9Ev2Agc1ztyuUTHLbgsNclhMRE4CXvB6LDnBTLLsz0KthL-spfiQ9O/exec";
-
 export default {
-  async fetch(req, env) {
-    const url = new URL(req.url);
-
-    // CORS preflight
-    if (req.method === "OPTIONS") return cors();
-
-    // API key security
-    if (req.headers.get("x-api-key") !== API_KEY) {
-      return json({ error: "Unauthorized" }, 401);
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    
+    // 1. Setup: Apni details yahan replace karein ya wrangler.toml ke vars use karein
+    const USERNAME = env.GITHUB_USERNAME || 'RajKumarDev'; // Example username
+    const REPO = env.GITHUB_REPO || 'my-website';         // Example repo
+    const BRANCH = env.GITHUB_BRANCH || 'main';
+    
+    // 2. Path handle karna (Agar url khali hai to index.html uthao)
+    let path = url.pathname;
+    if (path === '/' || path === '') {
+      path = '/index.html';
     }
 
-    // -------- LOGS ENDPOINT --------
-    if (url.pathname === "/logs" && req.method === "GET") {
-      return getLogs(req, env);
+    // 3. GitHub Raw URL create karna
+    // Format: https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path}
+    const targetUrl = `https://raw.githubusercontent.com/${USERNAME}/${REPO}/${BRANCH}${path}`;
+
+    // 4. GitHub se content fetch karna
+    const response = await fetch(targetUrl);
+
+    // Agar file nahi mili (404), to error show karein
+    if (!response.ok) {
+      return new Response("404: File Not Found on GitHub", { status: 404 });
     }
 
-    // -------- MAIN CRUD API --------
-    if (req.method !== "POST") {
-      return json({ error: "POST only" }, 405);
-    }
+    // 5. Sahi Content-Type set karna taaki browser code na dikhaye, balki run kare
+    const headers = new Headers(response.headers);
+    
+    // Extension check karke header set karna
+    if (path.endsWith('.html')) headers.set('Content-Type', 'text/html;charset=UTF-8');
+    else if (path.endsWith('.css')) headers.set('Content-Type', 'text/css');
+    else if (path.endsWith('.js')) headers.set('Content-Type', 'application/javascript');
+    else if (path.endsWith('.json')) headers.set('Content-Type', 'application/json');
+    else if (path.endsWith('.png')) headers.set('Content-Type', 'image/png');
+    else if (path.endsWith('.jpg')) headers.set('Content-Type', 'image/jpeg');
 
-    const body = await req.json();
-
-    // Forward request to Google Apps Script
-    const res = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    const text = await res.text();
-
-    // Async log (KV, auto delete in 7 days)
-    log(env.LOGS, {
-      t: Date.now(),
-      action: body.action,
-      sheet: body.sheetName,
-      id: body.id || null,
-      ip: req.headers.get("cf-connecting-ip")
-    });
-
-    return new Response(text, {
-      headers: { ...corsH(), "Content-Type": "application/json" }
+    // Final response return karna
+    return new Response(response.body, {
+      status: response.status,
+      headers: headers
     });
   }
 };
-
-// -------- LOGS READER --------
-async function getLogs(req, env) {
-  const url = new URL(req.url);
-  const limit = Number(url.searchParams.get("limit") || 50);
-  const cursor = url.searchParams.get("cursor");
-
-  const list = await env.LOGS.list({ limit, cursor });
-  const logs = [];
-
-  for (const k of list.keys) {
-    const v = await env.LOGS.get(k.name);
-    if (v) logs.push(JSON.parse(v));
-  }
-
-  logs.sort((a, b) => b.t - a.t); // newest first
-
-  return json({
-    logs,
-    nextCursor: list.cursor || null
-  });
-}
-
-// -------- KV LOGGER --------
-async function log(KV, data) {
-  await KV.put(
-    `log:${data.t}:${crypto.randomUUID()}`,
-    JSON.stringify(data),
-    { expirationTtl: 60 * 60 * 24 * 7 } // ✅ 7 days
-  );
-}
-
-// -------- HELPERS --------
-const corsH = () => ({
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, x-api-key",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS"
-});
-
-const cors = () => new Response("", { headers: corsH() });
-
-const json = (d, s = 200) =>
-  new Response(JSON.stringify(d), {
-    status: s,
-    headers: { ...corsH(), "Content-Type": "application/json" }
-  });

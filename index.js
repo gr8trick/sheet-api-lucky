@@ -5,7 +5,7 @@ export default {
     // ==============================================
     // 🚀 SETTINGS (Control Panel)
     // ==============================================
-    const DEV_MODE = true; // Kaam pura hone par 'false' karein
+    const DEV_MODE = false; // Kaam pura hone par 'false' karein
     
     const USERNAME = env.GITHUB_USERNAME;
     const REPO = env.GITHUB_REPO;

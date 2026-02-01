@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucky Telecom - Ultimate ERP</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+
+    <style>
+        :root { --primary: #1e293b; --accent: #3b82f6; --bg: #f8fafc; --success: #22c55e; --danger: #ef4444; }
+        body { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
+
+        /* Sidebar */
+        .sidebar { height: 100vh; position: fixed; top: 0; left: 0; width: 260px; background: var(--primary); color: #fff; z-index: 1000; transition: 0.3s; }
+        .main-content { margin-left: 260px; padding: 25px; transition: 0.3s; }
+        .nav-link { color: #94a3b8; padding: 15px 20px; border-left: 4px solid transparent; cursor: pointer; display: flex; align-items: center; }
+        .nav-link:hover, .nav-link.active { background: #0f172a; color: #fff; border-left-color: var(--accent); }
+        .nav-link i { width: 30px; }
+
+        /* Status Dot */
+        .sync-dot { height: 12px; width: 12px; background: #ccc; border-radius: 50%; display: inline-block; margin-left: 10px; }
+        .sync-online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .sync-busy { background: #eab308; animation: pulse 1s infinite; }
+        
+        /* Cards & Tables */
+        .smart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; }
+        .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-bottom: 10px; }
+        .prod-card { border: 1px solid #ddd; padding: 10px; border-radius: 8px; cursor: pointer; text-align: center; background: white; transition: 0.2s; }
+        .prod-card:hover { border-color: var(--accent); background: #f1f5f9; transform: translateY(-3px); }
+        
+        /* Print Styles */
+        @media print {
+            .sidebar, .no-print, .modal { display: none !important; }
+            .main-content { margin: 0; padding: 0; width: 100%; }
+            #invoice-template { display: block !important; position: absolute; top: 0; left: 0; width: 100%; background: white; z-index: 9999; padding: 10mm; }
+            body { background: white; }
+        }
+
+        /* History Colors */
+        .history-item { border-left: 4px solid transparent; }
+        .type-sale { border-color: var(--success); background: #f0fdf4; }
+        .type-stock { border-color: var(--accent); background: #eff6ff; }
+        .type-transfer { border-color: #f59e0b; background: #fffbeb; }
+
+        @media (max-width: 768px) { .sidebar { transform: translateX(-100%); } .main-content { margin-left: 0; } }
+    </style>
+</head>
+<body>
+
+<nav class="sidebar" id="sidebar">
+    <div class="p-4 border-bottom border-secondary">
+        <h5 class="fw-bold m-0"><i class="fas fa-bolt text-warning"></i> Lucky Telecom</h5>
+        <small class="text-white-50">Manager: Raj Kumar</small>
+    </div>
+    <div class="nav flex-column mt-3">
+        <a class="nav-link active" onclick="showTab('dashboard')"><i class="fas fa-th-large"></i> Dashboard</a>
+        <a class="nav-link" onclick="showTab('pos')"><i class="fas fa-cash-register"></i> New Sale</a>
+        <a class="nav-link" onclick="showTab('history')"><i class="fas fa-history"></i> History & Logs</a>
+        <a class="nav-link" onclick="showTab('inventory')"><i class="fas fa-boxes"></i> Inventory (Stock)</a>
+        <a class="nav-link" onclick="showTab('customers')"><i class="fas fa-users"></i> Customers</a>
+        <a class="nav-link" onclick="showTab('finance')"><i class="fas fa-file-invoice-dollar"></i> Finance</a>
+        <a class="nav-link" onclick="showTab('settings')"><i class="fas fa-cog"></i> Settings & GST</a>
+    </div>
+</nav>
+
+<div class="main-content">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <div class="d-flex align-items-center">
+            <h3 id="page-title" class="fw-bold text-dark m-0">Dashboard</h3>
+            <span id="syncStatus" class="sync-dot ms-2" title="Cloud Status"></span>
+        </div>
+        <select id="shopSelector" class="form-select w-auto shadow-sm fw-bold text-primary" onchange="refreshApp()">
+            <option value="all">🌐 All Shops</option>
+            <option value="shop1">🏢 Main Branch</option>
+            <option value="shop2">🏬 Shop 2 (Chowk)</option>
+            <option value="shop3">🚉 Shop 3 (Station)</option>
+        </select>
+    </div>
+
+    <div id="dashboard" class="content-section">
+        <div class="row g-3 mb-4">
+            <div class="col-md-3"><div class="smart-card"><div class="icon-box bg-primary text-white"><i class="fas fa-wallet"></i></div><p class="text-muted small mb-0">Total Sales</p><h3 class="fw-bold m-0" id="dash-sales">₹0</h3></div></div>
+            <div class="col-md-3"><div class="smart-card"><div class="icon-box bg-danger text-white"><i class="fas fa-hand-holding-usd"></i></div><p class="text-muted small mb-0">Finance Due</p><h3 class="fw-bold m-0" id="dash-due">₹0</h3></div></div>
+            <div class="col-md-3"><div class="smart-card"><div class="icon-box bg-success text-white"><i class="fas fa-check"></i></div><p class="text-muted small mb-0">Collected</p><h3 class="fw-bold m-0" id="dash-collected">₹0</h3></div></div>
+            <div class="col-md-3"><div class="smart-card"><div class="icon-box bg-warning text-dark"><i class="fas fa-box"></i></div><p class="text-muted small mb-0">Low Stock Items</p><h3 class="fw-bold m-0" id="dash-stock">0</h3></div></div>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-8">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white py-3"><h6 class="m-0 fw-bold text-danger"><i class="fas fa-bell"></i> Upcoming EMI (Next 30 Days)</h6></div>
+                    <div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Date</th><th>Customer</th><th>Mobile</th><th>Amount</th><th>Action</th></tr></thead><tbody id="upcoming-emi-list"></tbody></table></div>
+                    <div id="no-emi-msg" class="p-4 text-center text-muted d-none">No upcoming payments.</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white fw-bold">Recent Activity</div>
+                    <ul class="list-group list-group-flush" id="recent-activity"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="inventory" class="content-section d-none">
+        <div class="d-flex justify-content-between mb-3 align-items-center">
+            <h4>Inventory Management</h4>
+            <div class="d-flex gap-2">
+                <input type="text" id="invSearchInput" class="form-control" placeholder="Search Product / Barcode..." style="width: 250px;" onkeyup="renderInventory()">
+                <button class="btn btn-warning me-2 text-dark" onclick="openTransferModal()"><i class="fas fa-exchange-alt"></i> Transfer</button>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStockModal"><i class="fas fa-plus"></i> Add Product</button>
+            </div>
+        </div>
+        <div class="smart-card p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>Product Name</th><th>Barcode</th><th>Shop</th><th>Buy Price</th><th>Sell Price</th><th>Qty</th><th>Action</th></tr></thead>
+                    <tbody id="inv-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="pos" class="content-section d-none">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="smart-card">
+                    <h5 class="mb-4 d-flex justify-content-between">
+                        <span>New Sale Entry</span>
+                        <span class="badge bg-info" id="gstStatusBadge">GST OFF</span>
+                    </h5>
+                    <form id="posForm">
+                        <div class="row g-3">
+                            <div class="col-md-4"><label class="small text-muted">Shop</label><select id="posShop" class="form-select" onchange="resetPos()"><option value="shop1">Main Branch</option><option value="shop2">Shop 2</option><option value="shop3">Shop 3</option></select></div>
+                            
+                            <div class="col-md-8">
+                                <label class="small text-muted">Scan Barcode / IMEI or Search</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="fas fa-barcode"></i></span>
+                                    <input type="text" id="posProdName" class="form-control fw-bold" placeholder="Scan or Type..." oninput="handleScannerInput(this.value)">
+                                    <button type="button" class="btn btn-primary" onclick="openProdModal()"><i class="fas fa-list"></i> List</button>
+                                </div>
+                                <input type="hidden" id="posProdId">
+                            </div>
+                            
+                            <div class="col-md-6"><label class="small text-muted">Customer Name</label><input type="text" id="posCust" class="form-control" required></div>
+                            <div class="col-md-6"><label class="small text-muted">Mobile Number</label><input type="tel" id="posMob" class="form-control" required></div>
+                            
+                            <div class="col-md-4"><label class="small text-muted">Price</label><input type="number" id="posPrice" class="form-control fw-bold border-success" oninput="calcLoan()" required></div>
+                            <div class="col-md-4"><label class="small text-muted">Mode</label><select id="posMode" class="form-select" onchange="toggleFin()" required><option value="Cash">Cash / UPI</option><option value="Finance">Finance</option></select></div>
+                            <div class="col-md-4"><label class="small text-muted">Date</label><input type="date" id="posDate" class="form-control" required></div>
+                        </div>
+
+                        <div id="fin-section" class="d-none mt-3 p-3 bg-light rounded border border-warning">
+                            <h6 class="text-primary mb-3">Loan Details</h6>
+                            <div class="row g-2">
+                                <div class="col-md-4"><select id="finProv" class="form-select form-select-sm"><option>TVS Credit</option><option>DMI Finance</option><option>Shriram</option><option>Bajaj</option><option>Samsung</option></select></div>
+                                <div class="col-md-4"><input type="text" id="finFile" class="form-control form-control-sm" placeholder="File No"></div>
+                                <div class="col-md-4"><input type="number" id="finDP" class="form-control form-control-sm" placeholder="Down Pay" oninput="calcLoan()"></div>
+                                <div class="col-md-4"><input type="number" id="finLoan" class="form-control form-control-sm" placeholder="Loan Amt" readonly></div>
+                                <div class="col-md-4"><input type="number" id="finEMI" class="form-control form-control-sm" placeholder="EMI Amt"></div>
+                                <div class="col-md-4"><input type="number" id="finMonths" class="form-control form-control-sm" placeholder="Months"></div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 mt-4 fw-bold">Save Sale (No Print)</button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="smart-card h-100">
+                    <h6>Recent Sales</h6>
+                    <ul id="pos-recent" class="list-group list-group-flush small"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="history" class="content-section d-none">
+        <div class="smart-card mb-3">
+            <div class="row g-2">
+                <div class="col-md-4"><input type="text" id="histSearch" class="form-control" placeholder="Search Activity..." onkeyup="renderHistory()"></div>
+                <div class="col-md-3"><input type="date" id="histDate" class="form-control" onchange="renderHistory()"></div>
+                <div class="col-md-3"><select id="histType" class="form-select" onchange="renderHistory()"><option value="all">All Types</option><option value="Sale">Sales</option><option value="Stock">Stock Added</option><option value="Transfer">Transfer</option></select></div>
+                <div class="col-md-2"><button class="btn btn-secondary w-100" onclick="renderHistory(true)">Reset</button></div>
+            </div>
+        </div>
+        <div class="smart-card p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark"><tr><th>Time</th><th>Type</th><th>Description</th><th>Shop</th><th>Info</th></tr></thead>
+                    <tbody id="history-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="customers" class="content-section d-none">
+        <div class="smart-card">
+            <h4 class="mb-3">Customer Directory</h4>
+            <input type="text" id="custSearch" class="form-control mb-3" placeholder="Search Customer..." onkeyup="renderCustomers()">
+            <div class="table-responsive"><table class="table table-bordered mb-0"><thead class="table-light"><tr><th>Name</th><th>Mobile</th><th>Total Purchased</th><th>Items</th></tr></thead><tbody id="cust-list"></tbody></table></div>
+        </div>
+    </div>
+
+    <div id="finance" class="content-section d-none">
+        <h4 class="mb-3">Finance Ledger</h4>
+        <div class="smart-card p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="bg-dark text-white"><tr><th>File</th><th>Customer</th><th>Provider</th><th>Loan</th><th>EMI</th><th>Status</th><th>View</th></tr></thead><tbody id="finance-list"></tbody></table></div></div>
+    </div>
+
+    <div id="settings" class="content-section d-none">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="smart-card mb-4 border-primary">
+                    <h5 class="text-primary mb-3"><i class="fas fa-file-invoice"></i> Advanced GST Settings</h5>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="setGstEnable" onchange="saveSettings()">
+                        <label class="form-check-label fw-bold" for="setGstEnable">Enable GST Billing</label>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Shop GSTIN Number</label>
+                        <input type="text" id="setGstNo" class="form-control text-uppercase" placeholder="e.g. 10ABCDE1234F1Z5">
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-6">
+                            <label class="form-label small">Default Tax Rate (%)</label>
+                            <select id="setGstRate" class="form-select">
+                                <option value="12">12%</option>
+                                <option value="18" selected>18%</option>
+                                <option value="28">28%</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Tax Mode</label>
+                            <select id="setGstType" class="form-select">
+                                <option value="Inclusive">Inclusive (MRP)</option>
+                                <option value="Exclusive">Exclusive (+Tax)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100 mt-2" onclick="saveSettings()">Save Configuration</button>
+                </div>
+                
+                <div class="smart-card text-center">
+                    <h5>Backup & Reset</h5>
+                    <button class="btn btn-success me-2" onclick="backup()">Download Data</button>
+                    <button class="btn btn-danger" onclick="clearAll()">Factory Reset</button>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="smart-card mb-4">
+                    <h5 class="text-primary mb-3"><i class="fas fa-cloud"></i> Cloud Sync</h5>
+                    <p class="text-muted small">Connect Google Sheet. Data saves automatically.</p>
+                    <input type="text" id="cloudUrlInput" class="form-control mb-2" placeholder="Google Script URL">
+                    <button class="btn btn-primary w-100" onclick="saveCloudSettings()">Connect</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="addStockModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-primary text-white"><h5 class="modal-title">Add Stock</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="stockForm"><select id="stShop" class="form-select mb-2"><option value="shop1">Main Branch</option><option value="shop2">Shop 2</option><option value="shop3">Shop 3</option></select><input type="text" id="stName" class="form-control mb-2" placeholder="Product Name" required><input type="text" id="stBarcode" class="form-control mb-2" placeholder="Scan Barcode / IMEI"><select id="stCat" class="form-select mb-2"><option>Mobile</option><option>Accessories</option></select><div class="row g-2 mb-2"><div class="col"><input type="number" id="stCP" class="form-control" placeholder="Buy Price"></div><div class="col"><input type="number" id="stSP" class="form-control" placeholder="Sell Price"></div></div><input type="number" id="stQty" class="form-control mb-3" placeholder="Qty" required><button type="submit" class="btn btn-primary w-100">Add Stock</button></form></div></div></div></div>
+
+<div class="modal fade" id="prodModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><input type="text" id="prodSearch" class="form-control" placeholder="Search..." onkeyup="renderProdGrid()"><button class="btn-close ms-2" data-bs-dismiss="modal"></button></div><div class="modal-body bg-light"><div id="prodGrid" class="row g-3"></div></div></div></div></div>
+
+<div class="modal fade" id="viewFinModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Loan File: <span id="vf-file"></span></h5>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3 border-bottom pb-3">
+                    <div class="col-md-6"><h4 id="vf-cust" class="fw-bold"></h4><p id="vf-mob" class="text-muted mb-0"></p><span id="vf-prov" class="badge bg-primary mt-1"></span></div>
+                    <div class="col-md-6 text-end"><p class="mb-1 fs-5">Product: <strong id="vf-prod"></strong></p><p class="mb-1">Total Loan: <strong id="vf-loan"></strong></p><p class="mb-0 text-danger fs-5">EMI: <strong id="vf-emi"></strong> / mo</p></div>
+                </div>
+                <h6 class="fw-bold text-secondary">Payment Schedule</h6>
+                <div class="table-responsive" style="max-height: 350px;"><table class="table table-bordered text-center align-middle"><thead class="table-light sticky-top"><tr><th>No.</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead><tbody id="vf-schedule"></tbody></table></div>
+                <div class="row mt-3"><div class="col-6"><div class="alert alert-success py-2 mb-0">Paid: <strong id="vf-paid-total">₹0</strong></div></div><div class="col-6"><div class="alert alert-danger py-2 mb-0">Balance: <strong id="vf-rem-total">₹0</strong></div></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="transferModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-warning"><h5 class="modal-title text-dark">Transfer Stock</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="transferForm"><div class="mb-3"><label class="form-label">From Shop</label><select id="tfFromShop" class="form-select" onchange="renderTransferProducts()"><option value="shop1">Main Branch</option><option value="shop2">Shop 2</option><option value="shop3">Shop 3</option></select></div><div class="mb-3"><label class="form-label">Product</label><select id="tfProduct" class="form-select" required></select></div><div class="mb-3"><label class="form-label">To Shop</label><select id="tfToShop" class="form-select"><option value="shop2">Shop 2</option><option value="shop1">Main Branch</option><option value="shop3">Shop 3</option></select></div><div class="mb-3"><label class="form-label">Quantity</label><input type="number" id="tfQty" class="form-control" min="1" required></div><button type="submit" class="btn btn-warning w-100 fw-bold">Transfer Now</button></form></div></div></div></div>
+
+<div id="invoice-template" class="d-none">
+    <div class="p-4 border">
+        <center>
+            <h2 class="fw-bold">LUCKY TELECOM</h2>
+            <p class="mb-0" id="invShopName">Main Branch</p>
+            <p class="small">Begusarai, Bihar | Mob: 9999999999</p>
+            <p class="small fw-bold" id="invGstDisplay" style="display:none;"></p>
+        </center>
+        <hr>
+        <div class="row">
+            <div class="col-6"><strong>To:</strong> <span id="invCust"></span><br><strong>Mob:</strong> <span id="invMob"></span></div>
+            <div class="col-6 text-end"><strong>Inv #:</strong> <span id="invId"></span><br><strong>Date:</strong> <span id="invDate"></span></div>
+        </div>
+        <table class="table table-bordered mt-3 small">
+            <thead><tr class="table-light"><th>Item</th><th>Qty</th><th>Rate</th><th id="thGstAmt" style="display:none;">GST</th><th>Total</th></tr></thead>
+            <tbody><tr><td id="invItem"></td><td>1</td><td id="invRate"></td><td id="tdGstAmt" style="display:none;"></td><td id="invAmount"></td></tr></tbody>
+        </table>
+        <div class="row">
+            <div class="col-6"><p><strong>Payment Mode:</strong> <span id="invMode"></span></p></div>
+            <div class="col-6 text-end">
+                <p class="mb-1" id="invSubRow">Subtotal: <span id="invSub"></span></p>
+                <div id="invTaxRows" style="display:none;">
+                    <p class="mb-0">CGST: <span id="invCgst"></span></p>
+                    <p class="mb-1 border-bottom">SGST: <span id="invSgst"></span></p>
+                </div>
+                <h4 class="fw-bold">Total: <span id="invGrand"></span></h4>
+            </div>
+        </div>
+        <div class="mt-5 text-center small text-muted"><p>Goods once sold will not be taken back.</p><p>Thank You!</p></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // --- STATE ---
+    let DB = { stock: [], sales: [], transfers: [], settings: {} }; // Added settings
+    let CLOUD_URL = localStorage.getItem('LUCKY_CLOUD_URL') || '';
+    let financeModalInstance = null;
+
+    function init() {
+        const sStock = localStorage.getItem('lt_stock');
+        const sSales = localStorage.getItem('lt_sales');
+        const sTrans = localStorage.getItem('lt_transfers');
+        const sSet = localStorage.getItem('lt_settings');
+        
+        if(sStock) DB.stock = JSON.parse(sStock);
+        if(sSales) DB.sales = JSON.parse(sSales);
+        if(sTrans) DB.transfers = JSON.parse(sTrans);
+        if(sSet) DB.settings = JSON.parse(sSet);
+        
+        // Default Settings
+        if(!DB.settings.gstRate) DB.settings = { enableGst: false, gstNo: '', gstRate: 18, gstType: 'Inclusive' };
+
+        // Load settings into UI
+        document.getElementById('setGstEnable').checked = DB.settings.enableGst;
+        document.getElementById('setGstNo').value = DB.settings.gstNo || '';
+        document.getElementById('setGstRate').value = DB.settings.gstRate || 18;
+        document.getElementById('setGstType').value = DB.settings.gstType || 'Inclusive';
+        
+        updateGstBadge();
+
+        if(CLOUD_URL) {
+            document.getElementById('cloudUrlInput').value = CLOUD_URL;
+            updateStatus('online');
+            syncCloud('download', true);
+        } else updateStatus('offline');
+        
+        refreshApp();
+    }
+
+    function saveSettings() {
+        DB.settings = {
+            enableGst: document.getElementById('setGstEnable').checked,
+            gstNo: document.getElementById('setGstNo').value,
+            gstRate: parseInt(document.getElementById('setGstRate').value),
+            gstType: document.getElementById('setGstType').value
+        };
+        localStorage.setItem('lt_settings', JSON.stringify(DB.settings));
+        updateGstBadge();
+        Swal.fire('Saved', 'GST Configuration Updated', 'success');
+    }
+
+    function updateGstBadge() {
+        const badge = document.getElementById('gstStatusBadge');
+        if(DB.settings.enableGst) {
+            badge.className = 'badge bg-success';
+            badge.innerText = `GST ON (${DB.settings.gstType})`;
+        } else {
+            badge.className = 'badge bg-secondary';
+            badge.innerText = 'GST OFF';
+        }
+    }
+
+    // --- NAVIGATION ---
+    function showTab(id) {
+        document.querySelectorAll('.content-section').forEach(e => e.classList.add('d-none'));
+        document.getElementById(id).classList.remove('d-none');
+        document.querySelectorAll('.nav-link').forEach(e => e.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        document.getElementById('page-title').innerText = id.charAt(0).toUpperCase() + id.slice(1);
+        refreshApp();
+    }
+
+    // --- DATA SAVE & SYNC ---
+    function save() {
+        localStorage.setItem('lt_stock', JSON.stringify(DB.stock));
+        localStorage.setItem('lt_sales', JSON.stringify(DB.sales));
+        localStorage.setItem('lt_transfers', JSON.stringify(DB.transfers));
+        refreshApp();
+        syncCloud('upload', true);
+    }
+
+    async function syncCloud(mode, silent=false) {
+        if(!CLOUD_URL) return;
+        updateStatus('busy');
+        try {
+            let payload = {};
+            if(mode === 'upload') {
+                const finData = DB.sales.filter(s => s.mode === 'Finance');
+                payload = { action: 'SYNC_DATA', data: { 'Inventory': DB.stock, 'All_Sales': DB.sales, 'Finance_Customers': finData, 'Transfers': DB.transfers } };
+            } else {
+                payload = { action: 'GET_ALL_DATA' };
+            }
+            const res = await fetch(CLOUD_URL, { method: 'POST', body: JSON.stringify(payload) });
+            const result = await res.json();
+            if(result.status === 'success') {
+                if(mode === 'download') {
+                    if(result.data['Inventory']) DB.stock = result.data['Inventory'];
+                    if(result.data['All_Sales']) DB.sales = result.data['All_Sales'];
+                    if(result.data['Transfers']) DB.transfers = result.data['Transfers'];
+                    localStorage.setItem('lt_stock', JSON.stringify(DB.stock));
+                    localStorage.setItem('lt_sales', JSON.stringify(DB.sales));
+                    localStorage.setItem('lt_transfers', JSON.stringify(DB.transfers));
+                    refreshApp();
+                    if(!silent) Swal.fire('Synced', '', 'success');
+                }
+            }
+        } catch(e) { console.error(e); } finally { updateStatus('online'); }
+    }
+
+    function updateStatus(s) {
+        const d = document.getElementById('syncStatus');
+        d.className = 'sync-dot';
+        if(s === 'online') d.classList.add('sync-online');
+        if(s === 'busy') d.classList.add('sync-busy');
+    }
+
+    function refreshApp() {
+        renderDashboard();
+        const activeTab = document.querySelector('.content-section:not(.d-none)').id;
+        if(activeTab === 'inventory') renderInventory();
+        if(activeTab === 'customers') renderCustomers();
+        if(activeTab === 'finance') renderFinanceList();
+        if(activeTab === 'history') renderHistory();
+        if(activeTab === 'pos') renderRecentPos();
+    }
+
+    // --- DASHBOARD ---
+    function renderDashboard() {
+        const f = document.getElementById('shopSelector').value;
+        const sales = f === 'all' ? DB.sales : DB.sales.filter(s => s.shop === f);
+        const stock = f === 'all' ? DB.stock : DB.stock.filter(s => s.shop === f);
+
+        const total = sales.reduce((a,b) => a + (parseFloat(b.total)||0), 0);
+        let due = 0, coll = 0;
+        sales.filter(s => s.mode === 'Finance').forEach(s => {
+            const paid = s.fin.paidMonths ? s.fin.paidMonths.length : 0;
+            const emi = parseFloat(s.fin.emi);
+            coll += (paid * emi);
+            due += (parseFloat(s.fin.loan) - (paid * emi));
+        });
+
+        document.getElementById('dash-sales').innerText = '₹' + total.toLocaleString();
+        document.getElementById('dash-due').innerText = '₹' + due.toLocaleString();
+        document.getElementById('dash-collected').innerText = '₹' + coll.toLocaleString();
+        document.getElementById('dash-stock').innerText = stock.filter(i => i.qty < 3).length;
+
+        const list = document.getElementById('upcoming-emi-list'); list.innerHTML = '';
+        let hasData = false;
+        sales.filter(s => s.mode === 'Finance').forEach(s => {
+            const paid = s.fin.paidMonths || [];
+            for(let i=1; i<=s.fin.months; i++) {
+                if(!paid.includes(i)) {
+                    const dt = moment(s.date).add(i, 'months');
+                    const diff = dt.diff(moment(), 'days');
+                    if(diff <= 30) {
+                        hasData = true;
+                        list.innerHTML += `<tr><td>${dt.format('DD MMM')}<br><small class="${diff<0?'text-danger':''}">${diff<0?'Overdue':diff+' days'}</small></td><td>${s.customer}</td><td>${s.mobile}</td><td>₹${s.fin.emi}</td><td><button class="btn btn-sm btn-outline-primary" onclick="viewFin('${s.id}')">View</button></td></tr>`;
+                        break;
+                    }
+                }
+            }
+        });
+        document.getElementById('no-emi-msg').classList.toggle('d-none', hasData);
+        
+        const act = document.getElementById('recent-activity'); act.innerHTML = '';
+        sales.slice(0, 5).forEach(s => act.innerHTML += `<li class="list-group-item d-flex justify-content-between"><span>${s.customer}</span><span>₹${s.total}</span></li>`);
+    }
+
+    // --- INVENTORY ---
+    function renderInventory() {
+        const f = document.getElementById('shopSelector').value;
+        const search = document.getElementById('invSearchInput').value.toLowerCase();
+        const list = document.getElementById('inv-list'); list.innerHTML = '';
+        const data = f === 'all' ? DB.stock : DB.stock.filter(i => i.shop === f);
+        
+        // Filter by Search Input
+        const filtered = data.filter(i => i.name.toLowerCase().includes(search) || (i.barcode && i.barcode.includes(search)));
+
+        if(filtered.length === 0) { list.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No stock found.</td></tr>'; return; }
+        
+        filtered.forEach(i => list.innerHTML += `<tr><td><b>${i.name}</b></td><td>${i.barcode||'-'}</td><td>${i.shop}</td><td>₹${i.cp}</td><td class="text-success fw-bold">₹${i.sp}</td><td><span class="badge ${i.qty>0?'bg-primary':'bg-danger'}">${i.qty}</span></td><td><button class="btn btn-sm btn-danger" onclick="delStock(${i.id})"><i class="fas fa-trash"></i></button></td></tr>`);
+    }
+
+    function openTransferModal() { renderTransferProducts(); new bootstrap.Modal(document.getElementById('transferModal')).show(); }
+    function renderTransferProducts() {
+        const fs = document.getElementById('tfFromShop').value;
+        const sel = document.getElementById('tfProduct'); sel.innerHTML = '';
+        const items = DB.stock.filter(i => i.shop === fs && i.qty > 0);
+        if(items.length === 0) sel.innerHTML = '<option value="">No items</option>';
+        items.forEach(i => { const o = document.createElement('option'); o.value = i.id; o.text = `${i.name} (Qty: ${i.qty})`; sel.appendChild(o); });
+    }
+
+    document.getElementById('transferForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const pid = document.getElementById('tfProduct').value;
+        const ts = document.getElementById('tfToShop').value;
+        const qty = parseInt(document.getElementById('tfQty').value);
+        if(document.getElementById('tfFromShop').value === ts) return Swal.fire('Error', 'Same Shop', 'error');
+        
+        const idx = DB.stock.findIndex(i => i.id == pid);
+        if(idx === -1 || DB.stock[idx].qty < qty) return Swal.fire('Error', 'Stock Issue', 'error');
+        
+        const item = DB.stock[idx];
+        item.qty -= qty;
+        
+        const destIdx = DB.stock.findIndex(i => i.name === item.name && i.shop === ts && i.cat === item.cat);
+        if(destIdx > -1) DB.stock[destIdx].qty += qty;
+        else DB.stock.push({ ...item, id: Date.now(), shop: ts, qty: qty });
+
+        if(!DB.transfers) DB.transfers = [];
+        DB.transfers.push({ id: Date.now(), date: new Date().toISOString(), item: item.name, from: item.shop, to: ts, qty: qty });
+        
+        save(); bootstrap.Modal.getInstance(document.getElementById('transferModal')).hide(); e.target.reset();
+        Swal.fire('Success', 'Transfer Complete', 'success');
+    });
+
+    document.getElementById('stockForm').addEventListener('submit', e => {
+        e.preventDefault();
+        DB.stock.push({
+            id: Date.now(), shop: document.getElementById('stShop').value, name: document.getElementById('stName').value,
+            barcode: document.getElementById('stBarcode').value, // SCANNER SUPPORT
+            cat: document.getElementById('stCat').value, cp: document.getElementById('stCP').value, sp: document.getElementById('stSP').value,
+            qty: parseInt(document.getElementById('stQty').value)
+        });
+        save(); bootstrap.Modal.getInstance(document.getElementById('addStockModal')).hide(); e.target.reset();
+        Swal.fire('Success', '', 'success');
+    });
+
+    // --- POS & SCANNER ---
+    function setupPos() { document.getElementById('posDate').valueAsDate = new Date(); renderRecentPos(); }
+    function resetPos() { document.getElementById('posProdName').value = ''; document.getElementById('posProdId').value = ''; }
+    function renderRecentPos() { 
+        const l = document.getElementById('pos-recent'); 
+        l.innerHTML = ''; 
+        // Show last 5 sales with Print Button
+        DB.sales.slice(0, 5).forEach(s => {
+            l.innerHTML += `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>${s.customer}<br><small>₹${s.total}</small></div>
+                <button class="btn btn-sm btn-outline-dark" onclick="printInvoiceById(${s.id})"><i class="fas fa-print"></i></button>
+            </li>`;
+        });
+    }
+    
+    function toggleFin() { document.getElementById('fin-section').classList.toggle('d-none', document.getElementById('posMode').value !== 'Finance'); }
+    function calcLoan() { document.getElementById('finLoan').value = (parseFloat(document.getElementById('posPrice').value)||0) - (parseFloat(document.getElementById('finDP').value)||0); }
+    function openProdModal() { renderProdGrid(); new bootstrap.Modal(document.getElementById('prodModal')).show(); }
+
+    // SCANNER LOGIC
+    let scanTimeout;
+    function handleScannerInput(val) {
+        clearTimeout(scanTimeout);
+        scanTimeout = setTimeout(() => {
+            const sh = document.getElementById('posShop').value;
+            const item = DB.stock.find(i => i.shop === sh && (i.barcode === val || i.name.toLowerCase() === val.toLowerCase()));
+            if(item) {
+                selProd(item.id, item.qty);
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Scanned!', showConfirmButton: false, timer: 1000 });
+            }
+        }, 500);
+    }
+
+    function renderProdGrid() {
+        const sh = document.getElementById('posShop').value;
+        const term = document.getElementById('prodSearch').value.toLowerCase();
+        const g = document.getElementById('prodGrid'); g.innerHTML = '';
+        const items = DB.stock.filter(i => i.shop === sh && (i.name.toLowerCase().includes(term) || (i.barcode && i.barcode.includes(term))));
+        if(items.length===0) g.innerHTML = '<p class="text-center w-100">No products found.</p>';
+        items.forEach(i => {
+            const op = i.qty < 1 ? 'opacity-50' : '';
+            g.innerHTML += `<div class="col-md-4 ${op}"><div class="prod-card" onclick="selProd(${i.id},${i.qty})"><h6>${i.name}</h6><small class="text-muted">${i.barcode||''}</small><div class="text-success fw-bold">₹${i.sp}</div><span class="badge ${i.qty>0?'bg-primary':'bg-danger'}">Stock: ${i.qty}</span></div></div>`;
+        });
+    }
+    
+    function selProd(id, qty) {
+        if(qty<1) return Swal.fire('Stop', 'Out of Stock', 'warning');
+        const i = DB.stock.find(x => x.id == id);
+        document.getElementById('posProdName').value = i.name;
+        document.getElementById('posProdId').value = i.id;
+        document.getElementById('posPrice').value = i.sp;
+        calcLoan();
+        const modalEl = document.getElementById('prodModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if(modal) modal.hide();
+    }
+
+    document.getElementById('posForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const pid = document.getElementById('posProdId').value;
+        if(!pid) return Swal.fire('Error', 'Select Product', 'error');
+        const idx = DB.stock.findIndex(i => i.id == pid);
+        if(idx > -1) DB.stock[idx].qty--;
+
+        // Calculate Tax based on Settings
+        let finalPrice = parseFloat(document.getElementById('posPrice').value);
+        if(DB.settings.enableGst && DB.settings.gstType === 'Exclusive') {
+            finalPrice = finalPrice * (1 + (DB.settings.gstRate/100));
+            finalPrice = Math.round(finalPrice);
+        }
+
+        const sale = {
+            id: Date.now(), shop: document.getElementById('posShop').value, date: document.getElementById('posDate').value,
+            customer: document.getElementById('posCust').value, mobile: document.getElementById('posMob').value,
+            product: document.getElementById('posProdName').value, total: finalPrice,
+            mode: document.getElementById('posMode').value, fin: {}
+        };
+
+        if(sale.mode === 'Finance') {
+            sale.fin = {
+                prov: document.getElementById('finProv').value, file: document.getElementById('finFile').value,
+                loan: document.getElementById('finLoan').value, dp: document.getElementById('finDP').value,
+                emi: document.getElementById('finEMI').value, months: document.getElementById('finMonths').value, paidMonths: []
+            };
+        }
+        DB.sales.unshift(sale);
+        save(); e.target.reset(); resetPos(); setupPos();
+        
+        Swal.fire({
+            icon: 'success', title: 'Sale Saved!', 
+            text: 'Go to Recent Sales to Print Bill',
+            timer: 2000
+        });
+    });
+
+    function printInvoiceById(id) {
+        const sale = DB.sales.find(s => s.id == id);
+        if(sale) printInvoice(sale);
+    }
+
+    function printInvoice(sale) {
+        const gstOn = DB.settings.enableGst;
+        const rate = DB.settings.gstRate;
+        
+        let displayTotal = sale.total;
+        let taxableVal = 0, gstAmt = 0;
+
+        if(gstOn) {
+            document.getElementById('invGstDisplay').style.display = 'block';
+            document.getElementById('invGstDisplay').innerText = 'GSTIN: ' + (DB.settings.gstNo || 'N/A');
+            
+            taxableVal = (displayTotal / (1 + (rate/100))).toFixed(2);
+            gstAmt = (displayTotal - taxableVal).toFixed(2);
+            
+            document.getElementById('thGstAmt').style.display = 'table-cell';
+            document.getElementById('tdGstAmt').style.display = 'table-cell';
+            document.getElementById('tdGstAmt').innerText = '₹' + gstAmt;
+            
+            document.getElementById('invTaxRows').style.display = 'block';
+            document.getElementById('invCgst').innerText = '₹' + (gstAmt/2).toFixed(2) + ` (${rate/2}%)`;
+            document.getElementById('invSgst').innerText = '₹' + (gstAmt/2).toFixed(2) + ` (${rate/2}%)`;
+            
+            document.getElementById('invRate').innerText = '₹' + taxableVal;
+            document.getElementById('invSub').innerText = '₹' + taxableVal;
+        } else {
+            document.getElementById('invGstDisplay').style.display = 'none';
+            document.getElementById('thGstAmt').style.display = 'none';
+            document.getElementById('tdGstAmt').style.display = 'none';
+            document.getElementById('invTaxRows').style.display = 'none';
+            
+            document.getElementById('invRate').innerText = '₹' + displayTotal;
+            document.getElementById('invSub').innerText = '₹' + displayTotal;
+        }
+
+        document.getElementById('invShopName').innerText = sale.shop;
+        document.getElementById('invCust').innerText = sale.customer;
+        document.getElementById('invMob').innerText = sale.mobile;
+        document.getElementById('invId').innerText = sale.id;
+        document.getElementById('invDate').innerText = sale.date;
+        document.getElementById('invItem').innerText = sale.product;
+        document.getElementById('invAmount').innerText = '₹' + displayTotal;
+        document.getElementById('invGrand').innerText = '₹' + displayTotal;
+        document.getElementById('invMode').innerText = sale.mode;
+
+        window.print();
+    }
+
+    // --- FINANCE (FIXED VIEW) ---
+    function renderFinanceList() {
+        const f = document.getElementById('shopSelector').value;
+        const l = document.getElementById('finance-list'); l.innerHTML = '';
+        const d = f === 'all' ? DB.sales : DB.sales.filter(s => s.shop === f);
+        d.filter(s => s.mode === 'Finance').forEach(s => {
+            const closed = (s.fin.paidMonths?.length || 0) >= parseInt(s.fin.months);
+            l.innerHTML += `<tr><td class="fw-bold">${s.fin.file}</td><td>${s.customer}<br><small>${s.mobile}</small></td><td>${s.fin.prov}</td><td>₹${s.fin.loan}</td><td>₹${s.fin.emi}</td><td><span class="badge ${closed?'bg-success':'bg-primary'}">${closed?'Closed':'Active'}</span></td><td><button class="btn btn-sm btn-info text-white" onclick="viewFin('${s.id}')">View</button></td></tr>`;
+        });
+    }
+
+    let curViewId = null;
+    window.viewFin = function(id) {
+        curViewId = id;
+        const s = DB.sales.find(x => x.id == id);
+        if (!s || !s.fin) return Swal.fire('Error', 'Data missing', 'error');
+
+        document.getElementById('vf-file').innerText = s.fin.file;
+        document.getElementById('vf-cust').innerText = s.customer;
+        document.getElementById('vf-mob').innerText = s.mobile;
+        document.getElementById('vf-prov').innerText = s.fin.prov;
+        document.getElementById('vf-prod').innerText = s.product;
+        document.getElementById('vf-loan').innerText = '₹' + s.fin.loan;
+        document.getElementById('vf-emi').innerText = '₹' + s.fin.emi;
+        
+        const tb = document.getElementById('vf-schedule'); tb.innerHTML = '';
+        let paidAmt = 0;
+        const paidArr = s.fin.paidMonths || [];
+        
+        for(let i=1; i<=s.fin.months; i++) {
+            const isPaid = paidArr.includes(i);
+            if(isPaid) paidAmt += parseFloat(s.fin.emi);
+            const dt = moment(s.date).add(i, 'months');
+            const btn = isPaid ? '<i class="fas fa-check-circle text-success fs-4"></i>' : `<button class="btn btn-sm btn-outline-success" onclick="payEMI(${i})">Pay Now</button>`;
+            tb.innerHTML += `<tr class="${isPaid?'table-success':''}"><td>${i}</td><td>${dt.format('DD-MMM-YY')}</td><td>${isPaid?'Paid':'Pending'}</td><td>${btn}</td></tr>`;
+        }
+        document.getElementById('vf-paid-total').innerText = '₹' + paidAmt;
+        document.getElementById('vf-rem-total').innerText = '₹' + (parseFloat(s.fin.loan)-paidAmt);
+        
+        financeModalInstance = new bootstrap.Modal(document.getElementById('viewFinModal'));
+        financeModalInstance.show();
+    }
+
+    window.payEMI = function(m) {
+        const s = DB.sales.find(x => x.id == curViewId);
+        if(confirm(`Mark Month ${m} as Paid?`)) {
+            if(!s.fin.paidMonths) s.fin.paidMonths = [];
+            s.fin.paidMonths.push(m);
+            save();
+            financeModalInstance.hide();
+            viewFin(curViewId); 
+        }
+    }
+
+    // --- OTHER ---
+    function renderCustomers() {
+        const t = document.getElementById('cust-list'); t.innerHTML='';
+        const term = document.getElementById('custSearch').value.toLowerCase();
+        const map = {};
+        DB.sales.forEach(s => {
+            if(!map[s.mobile]) map[s.mobile] = {n: s.customer, t:0, i:[]};
+            map[s.mobile].t += parseFloat(s.total); map[s.mobile].i.push(s.product);
+        });
+        Object.keys(map).forEach(m => {
+            if(map[m].n.toLowerCase().includes(term) || m.includes(term)) 
+                t.innerHTML+=`<tr><td>${map[m].n}</td><td>${m}</td><td>₹${map[m].t}</td><td>${map[m].i.join(', ')}</td></tr>`;
+        });
+    }
+
+    function renderHistory(reset=false) {
+        if(reset) { document.getElementById('histSearch').value=''; document.getElementById('histDate').value=''; document.getElementById('histType').value='all'; }
+        const search = document.getElementById('histSearch').value.toLowerCase();
+        const date = document.getElementById('histDate').value;
+        const type = document.getElementById('histType').value;
+        const list = document.getElementById('history-list'); list.innerHTML = '';
+
+        let tl = [];
+        DB.sales.forEach(s => tl.push({ts: s.id, type: 'Sale', desc: `Sold ${s.product} to ${s.customer}`, shop: s.shop, info: `₹${s.total}`}));
+        DB.stock.forEach(s => tl.push({ts: s.id, type: 'Stock', desc: `Added ${s.name}`, shop: s.shop, info: `Qty: ${s.qty}`}));
+        if(DB.transfers) DB.transfers.forEach(t => tl.push({ts: t.id, type: 'Transfer', desc: `Moved ${t.item} (${t.from}->${t.to})`, shop: t.to, info: `Qty: ${t.qty}`}));
+        
+        tl.sort((a,b) => b.ts - a.ts);
+
+        tl.forEach(t => {
+            let match = true;
+            if(search && !t.desc.toLowerCase().includes(search)) match = false;
+            if(date && new Date(t.ts).toISOString().split('T')[0] !== date) match = false;
+            if(type !== 'all' && t.type !== type) match = false;
+            
+            if(match) {
+                let cls = t.type==='Sale' ? 'type-sale' : (t.type==='Stock'?'type-stock':'type-transfer');
+                list.innerHTML += `<tr class="history-item ${cls}"><td>${moment(t.ts).format('DD MMM, h:mm A')}</td><td><span class="badge bg-secondary">${t.type}</span></td><td>${t.desc}</td><td>${t.shop}</td><td class="fw-bold">${t.info}</td></tr>`;
+            }
+        });
+    }
+
+    function delStock(id) { if(confirm('Delete?')) { DB.stock=DB.stock.filter(i=>i.id!=id); save(); }}
+    function clearAll() { if(confirm('Reset?')) { localStorage.clear(); location.reload(); }}
+    function backup() { const a = document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(DB)); a.download="lucky_bkp.json"; a.click(); }
+    function saveCloudSettings() { localStorage.setItem('LUCKY_CLOUD_URL', document.getElementById('cloudUrlInput').value); CLOUD_URL=document.getElementById('cloudUrlInput').value; syncCloud('download'); }
+
+    init();
+</script>
+</body>
+</html>

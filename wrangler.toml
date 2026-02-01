@@ -1,8 +1,8 @@
-name = "sheet-api-worker"
+name = "sheet-api-lucky"
 main = "index.js"
 compatibility_date = "2025-01-01"
 
 # KV for logs only
 [[kv_namespaces]]
 binding = "LOGS"
-id = "sheet-api-logs"
+id = "027f7b04346f4322a9893eb4a54401ca"

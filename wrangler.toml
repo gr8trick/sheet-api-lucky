@@ -1,3 +1,9 @@
-name = "sheet-api-lucky"
+name = "github-site-host"
 main = "index.js"
 compatibility_date = "2024-02-01"
+
+[vars]
+# IMP: Yahan apna GitHub username aur Repo ka naam likhein
+GITHUB_USERNAME = "gr8trick"  
+GITHUB_REPO = "sheet-api-lucky"      
+GITHUB_BRANCH = "main"          
